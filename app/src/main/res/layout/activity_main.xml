@@ -1,0 +1,105 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F5F5">
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+        <TextView android:id="@+id/tvModo"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Escolha um modo abaixo"
+            android:padding="8dp"
+            android:background="#E8F5E9"
+            android:textColor="#2E7D32"
+            android:gravity="center"
+            android:textSize="14sp"/>
+        <TextView android:id="@+id/tvStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Ative um modo e fique perto de alguém"
+            android:padding="12dp"
+            android:layout_marginTop="4dp"
+            android:background="#E3F2FD"
+            android:textColor="#1565C0"/>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🔵 Bluetooth (~10m)"
+            android:textStyle="bold"
+            android:paddingTop="16dp"
+            android:paddingBottom="4dp"/>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <Button android:id="@+id/btnBtDisponivel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Ficar Disponível"
+                android:backgroundTint="#2196F3"
+                android:layout_marginEnd="4dp"/>
+            <Button android:id="@+id/btnBtProcurar"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Procurar"
+                android:backgroundTint="#03A9F4"
+                android:layout_marginStart="4dp"/>
+        </LinearLayout>
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📶 Wi-Fi Direct (~100m)"
+            android:textStyle="bold"
+            android:paddingTop="16dp"
+            android:paddingBottom="4dp"/>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <Button android:id="@+id/btnWifiDisponivel"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Ficar Disponível"
+                android:backgroundTint="#FF9800"
+                android:layout_marginEnd="4dp"/>
+            <Button android:id="@+id/btnWifiProcurar"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Procurar"
+                android:backgroundTint="#FFC107"
+                android:layout_marginStart="4dp"/>
+        </LinearLayout>
+        <ListView android:id="@+id/listaConversa"
+            android:layout_width="match_parent"
+            android:layout_height="300dp"
+            android:layout_marginVertical="12dp"
+            android:divider="#DDDDDD"
+            android:dividerHeight="1dp"/>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <EditText android:id="@+id/edMensagem"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:hint="Digite sua mensagem..."
+                android:inputType="text"
+                android:maxLines="2"/>
+            <Button android:id="@+id/btnEnviar"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="➤ Enviar"
+                android:layout_marginStart="8dp"
+                android:backgroundTint="#FF5722"/>
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>
