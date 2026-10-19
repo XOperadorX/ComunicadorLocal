@@ -1,3 +1,5 @@
+package com.exemplo.comunicadorlocal
+
 import android.content.Context
 import android.net.wifi.p2p.WifiP2pDevice
 import android.net.wifi.p2p.WifiP2pManager
@@ -16,10 +18,10 @@ class WifiDirectHelper(
 ) : WifiP2pManager.ChannelListener {
 
     interface EventosWifiDirect {
-        fun dispositivoEncontrado(disp: WifiP2pDevice)
-        fun conectado(nome: String)
-        fun mensagemRecebida(texto: String, remetente: String)
-        fun erro(mensagem: String)
+        fun dispositivoEncontrado(disp: WifiP2pDevice) {}
+        fun conectado(nome: String) {}
+        fun mensagemRecebida(texto: String, remetente: String) {}
+        fun erro(mensagem: String) {}
     }
 
     private val gerenciador: WifiP2pManager? by lazy {
@@ -30,11 +32,12 @@ class WifiDirectHelper(
     private var clienteSocket: Socket? = null
     private val PORTA = 8888
     private var threadRecebimento: Thread? = null
+    private var threadServidor: Thread? = null
 
     val estaDisponivel: Boolean get() = gerenciador != null
 
     fun inicializar() {
-        canal = gerenciador?.initialize(contexto, contexto.mainLooper, this)
+        canal = gerenciador?.initialize(contexto, Looper.getMainLooper(), this)
     }
 
     override fun onChannelDisconnected() {
@@ -49,7 +52,13 @@ class WifiDirectHelper(
         gerenciador?.discoverPeers(canal, object : WifiP2pManager.ActionListener {
             override fun onSuccess() {}
             override fun onFailure(reason: Int) {
-                escutaEventos.erro("Falha ao procurar: $reason")
+                val motivo = when (reason) {
+                    WifiP2pManager.ERROR -> "Erro interno"
+                    WifiP2pManager.P2P_UNSUPPORTED -> "Não suportado"
+                    WifiP2pManager.BUSY -> "Ocupado, tente novamente"
+                    else -> "Código: $reason"
+                }
+                escutaEventos.erro("Falha na busca: $motivo")
             }
         })
     }
@@ -67,23 +76,25 @@ class WifiDirectHelper(
                 escutaEventos.conectado(dispositivo.deviceName)
             }
             override fun onFailure(reason: Int) {
-                escutaEventos.erro("Falha na conexão: $reason")
+                escutaEventos.erro("Falha na conexão")
             }
         })
     }
 
     fun iniciarServidor() {
-        Thread {
+        threadServidor = Thread {
             try {
                 servidorSocket = ServerSocket(PORTA)
-                while (true) {
+                while (!servidorSocket!!.isClosed) {
                     clienteSocket = servidorSocket!!.accept()
                     iniciarRecebimento(clienteSocket!!)
                 }
             } catch (e: Exception) {
-                if (e !is InterruptedException) escutaEventos.erro("Servidor encerrado")
+                if (e !is InterruptedException) {
+                    escutaEventos.erro("Servidor encerrado")
+                }
             }
-        }.start()
+        }.apply { start() }
     }
 
     private fun iniciarRecebimento(socket: Socket) {
@@ -96,9 +107,12 @@ class WifiDirectHelper(
                         escutaEventos.mensagemRecebida(linha, "Pessoa próxima")
                     }
                 }
-            } catch (_: Exception) {}
-        }
-        threadRecebimento?.start()
+            } catch (_: Exception) {
+                handler.post {
+                    escutaEventos.erro("Conexão encerrada")
+                }
+            }
+        }.apply { start() }
     }
 
     fun enviarMensagem(texto: String): Boolean {
@@ -114,9 +128,12 @@ class WifiDirectHelper(
 
     fun pararTudo() {
         threadRecebimento?.interrupt()
-        clienteSocket?.close()
-        servidorSocket?.close()
+        threadServidor?.interrupt()
+        try { clienteSocket?.close() } catch (_: Exception) {}
+        try { servidorSocket?.close() } catch (_: Exception) {}
         gerenciador?.stopPeerDiscovery(canal, null)
         gerenciador?.cancelConnect(canal, null)
+        clienteSocket = null
+        servidorSocket = null
     }
 }

@@ -1,101 +1,109 @@
+package com.exemplo.comunicadorlocal
+
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
-import android.content.Context
 import android.os.Handler
+import android.os.Message
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.UUID
 
-class BluetoothHelper(private val contexto: Context, private val handler: Handler) {
-    private val adaptadorBt = BluetoothAdapter.getDefaultAdapter()
-    private val UUID_PRINCIPAL = UUID.fromString("fa87c0d0-afac-11de-8a39-0800200c9a66")
-    
-    private var servidorThread: ServidorThread? = null
-    private var clienteThread: ClienteThread? = null
-    private var conectadoThread: ConectadoThread? = null
-
-    val estaAtivo: Boolean get() = adaptadorBt?.isEnabled == true
-
-    fun iniciarServidor(nomeApp: String) {
-        servidorThread = ServidorThread(nomeApp)
-        servidorThread?.start()
+class BluetoothHelper(
+    private val activity: MainActivity,
+    private val handler: Handler
+) {
+    companion object {
+        const val MENSAGEM_RECEBIDA = 1
+        const val STATUS_CONECTADO = 2
+        const val STATUS_ERRO = 3
+        private val UUID_BT = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     }
 
-    fun conectar(device: BluetoothDevice) {
-        clienteThread = ClienteThread(device)
-        clienteThread?.start()
+    private var adaptador = BluetoothAdapter.getDefaultAdapter()
+    private var servidor: ServidorThread? = null
+    private var cliente: ClienteThread? = null
+    private var conectado: ConectadoThread? = null
+
+    fun iniciarServidor(nome: String) {
+        servidor = ServidorThread(nome)
+        servidor?.start()
+    }
+
+    fun conectar(dispositivo: BluetoothDevice) {
+        cliente = ClienteThread(dispositivo)
+        cliente?.start()
     }
 
     fun enviarMensagem(texto: String): Boolean {
-        val thread = conectadoThread ?: return false
-        return thread.escrever(texto.toByteArray())
+        return conectado?.enviar(texto) ?: false
     }
 
     fun pararTudo() {
-        servidorThread?.cancelar()
-        clienteThread?.cancelar()
-        conectadoThread?.cancelar()
-        conectadoThread = null
+        servidor?.cancelar()
+        cliente?.cancelar()
+        conectado?.cancelar()
+        servidor = null
+        cliente = null
+        conectado = null
     }
 
-    private inner class ServidorThread(nomeApp: String) : Thread() {
-        private val socket: BluetoothServerSocket? = adaptadorBt.listenUsingRfcommWithServiceRecord(nomeApp, UUID_PRINCIPAL)
+    private inner class ServidorThread(nome: String) : Thread() {
+        private val socket: BluetoothServerSocket? = adaptador.listenUsingRfcommWithServiceRecord(nome, UUID_BT)
         override fun run() {
-            val socket = try { socket?.accept() } catch (e: IOException) { return }
-            socket?.use { conectar(it) }
+            var socket: BluetoothSocket?
+            while (true) {
+                socket = this@ServidorThread.socket?.accept()
+                if (socket != null) {
+                    conectado = ConectadoThread(socket)
+                    conectado?.start()
+                    handler.obtainMessage(STATUS_CONECTADO).sendToTarget()
+                    this@ServidorThread.socket?.close()
+                    break
+                }
+            }
         }
-        fun cancelar() { try { socket?.close() } catch (e: IOException) {} }
+        fun cancelar() { socket?.close() }
     }
 
     private inner class ClienteThread(val dispositivo: BluetoothDevice) : Thread() {
-        private var socket: BluetoothSocket? = null
+        private val socket = dispositivo.createRfcommSocketToServiceRecord(UUID_BT)
         override fun run() {
-            socket = dispositivo.createRfcommSocketToServiceRecord(UUID_PRINCIPAL)
-            adaptadorBt.cancelDiscovery()
             try {
-                socket?.connect()
-                handler.obtainMessage(STATUS_CONECTADO, dispositivo.name).sendToTarget()
-                conectar(socket!!)
+                adaptador.cancelDiscovery()
+                socket.connect()
+                conectado = ConectadoThread(socket)
+                conectado?.start()
+                handler.obtainMessage(STATUS_CONECTADO).sendToTarget()
             } catch (e: IOException) {
                 handler.obtainMessage(STATUS_ERRO, "Não foi possível conectar").sendToTarget()
-                return
             }
         }
-        fun cancelar() { try { socket?.close() } catch (e: IOException) {} }
-    }
-
-    private fun conectar(socket: BluetoothSocket) {
-        conectadoThread = ConectadoThread(socket).apply { start() }
-        handler.obtainMessage(STATUS_CONECTADO).sendToTarget()
+        fun cancelar() { socket.close() }
     }
 
     private inner class ConectadoThread(private val socket: BluetoothSocket) : Thread() {
         private val entrada: InputStream = socket.inputStream
         private val saida: OutputStream = socket.outputStream
+        private val buffer = ByteArray(1024)
         override fun run() {
-            val buffer = ByteArray(1024)
-            var bytesLidos: Int
+            var lido: Int
             while (true) {
                 try {
-                    bytesLidos = entrada.read(buffer)
-                    val texto = String(buffer, 0, bytesLidos)
+                    lido = entrada.read(buffer)
+                    val texto = String(buffer, 0, lido)
                     handler.obtainMessage(MENSAGEM_RECEBIDA, texto).sendToTarget()
                 } catch (e: IOException) { break }
             }
         }
-        fun escrever(dados: ByteArray): Boolean = try {
-            saida.write(dados)
-            true
-        } catch (e: IOException) { false }
-        fun cancelar() { try { socket.close() } catch (e: IOException) {} }
-    }
-
-    companion object {
-        const val MENSAGEM_RECEBIDA = 1
-        const val STATUS_CONECTADO = 2
-        const val STATUS_ERRO = 3
+        fun enviar(texto: String): Boolean {
+            return try {
+                saida.write(texto.toByteArray())
+                true
+            } catch (e: IOException) { false }
+        }
+        fun cancelar() { socket.close() }
     }
 }

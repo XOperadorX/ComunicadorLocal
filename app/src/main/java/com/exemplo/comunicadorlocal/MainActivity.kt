@@ -1,3 +1,5 @@
+package com.exemplo.comunicadorlocal
+
 import android.Manifest
 import android.app.AlertDialog
 import android.bluetooth.BluetoothAdapter
@@ -11,9 +13,10 @@ import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
-import com.exemplo.comunicadorlocal.R
+import com.exemplo.comunicadorlocal.R   // ← ESSA LINHA NÃO PODE FALTAR!
 
 class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
+    // ... resto do código continua igual
 
     private lateinit var btHelper: BluetoothHelper
     private lateinit var wifiHelper: WifiDirectHelper

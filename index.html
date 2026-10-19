@@ -1,0 +1,156 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0">
+  <title>Minha Lanterna</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      color: #ffffff;
+      background: #0b1020;
+      transition: background 0.3s;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 360px;
+      text-align: center;
+      padding: 30px 22px;
+      background: #151e31;
+      border: 1px solid #293750;
+      border-radius: 24px;
+      box-shadow: 0 15px 40px #0005;
+    }
+
+    h1 {
+      font-size: 27px;
+      margin: 0 0 35px;
+    }
+
+    .lamp {
+      font-size: 90px;
+      margin-bottom: 20px;
+      filter: grayscale(1);
+      transition: 0.3s;
+    }
+
+    .status {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 25px;
+    }
+
+    .botao {
+      width: 100%;
+      min-height: 68px;
+      border: 0;
+      border-radius: 16px;
+      background: #facc15;
+      color: #111827;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+
+    .botao:active {
+      transform: scale(0.97);
+    }
+
+    .dica {
+      margin-top: 25px;
+      color: #aab6ca;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    body.ligada {
+      background: #3b3514;
+    }
+
+    .ligada .lamp {
+      filter: none;
+      text-shadow: 0 0 35px #ffdf43;
+    }
+
+    .ligada .botao {
+      background: #22c55e;
+      color: #052e16;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app">
+    <h1>🔦 Minha Lanterna</h1>
+
+    <div class="lamp" id="lamp">🔦</div>
+
+    <p class="status" id="status">
+      LANTERNA DESLIGADA
+    </p>
+
+    <button
+      class="botao"
+      id="botao"
+      type="button"
+      aria-pressed="false">
+      ⚡ LIGAR LANTERNA
+    </button>
+
+    <p class="dica" id="dica">
+      Teste de interface no computador.<br>
+      A lanterna física exige o aplicativo Android.
+    </p>
+  </main>
+
+  <script>
+    "use strict";
+
+    let ligada = false;
+
+    const botao = document.getElementById("botao");
+    const status = document.getElementById("status");
+    const dica = document.getElementById("dica");
+
+    function atualizarInterface() {
+      document.body.classList.toggle("ligada", ligada);
+
+      status.textContent = ligada
+        ? "LANTERNA LIGADA"
+        : "LANTERNA DESLIGADA";
+
+      botao.textContent = ligada
+        ? "⏻ DESLIGAR LANTERNA"
+        : "⚡ LIGAR LANTERNA";
+
+      botao.setAttribute("aria-pressed", String(ligada));
+
+      dica.textContent = ligada
+        ? "Modo de demonstração: botão ligado."
+        : "Modo de demonstração: botão desligado.";
+    }
+
+    botao.addEventListener("click", function () {
+      ligada = !ligada;
+      atualizarInterface();
+    });
+
+    atualizarInterface();
+  </script>
+</body>
+</html>

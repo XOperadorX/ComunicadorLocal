@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Minha Lanterna</string>
+    <string name="title_activity_main">Minha Lanterna</string>
+    <string name="package_name">br.com.mmquasetudo.minhalanterna</string>
+    <string name="custom_url_scheme">br.com.mmquasetudo.minhalanterna</string>
+</resources>

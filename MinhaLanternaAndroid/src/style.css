@@ -1,0 +1,91 @@
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: Arial, sans-serif;
+  background: #0b1020;
+  color: #fff;
+  transition: background 0.3s;
+}
+
+.cartao {
+  width: 100%;
+  max-width: 360px;
+  padding: 32px 22px;
+  text-align: center;
+  border: 1px solid #293750;
+  border-radius: 24px;
+  background: #151e31;
+  box-shadow: 0 15px 40px #0005;
+}
+
+h1 {
+  margin: 0 0 35px;
+  font-size: 28px;
+}
+
+.icone {
+  margin-bottom: 20px;
+  font-size: 90px;
+}
+
+.status {
+  margin: 0 0 25px;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+button {
+  width: 100%;
+  min-height: 68px;
+  padding: 14px;
+  border: none;
+  border-radius: 16px;
+  background: #facc15;
+  color: #111827;
+  font-size: 17px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.mensagem {
+  min-height: 40px;
+  margin-top: 24px;
+  color: #aab6ca;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+body.ligada {
+  background: #3b3514;
+}
+
+body.ligada .cartao {
+  border-color: #facc15;
+}
+
+body.ligada .icone {
+  text-shadow: 0 0 30px #ffdf43;
+}
+
+body.ligada button {
+  background: #22c55e;
+  color: #052e16;
+}

@@ -1,0 +1,12 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "▶️ Rodar App",
+            "type": "java",
+            "request": "launch",
+            "projectName": "ComunicadorLocal",
+            "mainClass": "com.exemplo.comunicadorlocal.MainActivity"
+        }
+    ]
+}
