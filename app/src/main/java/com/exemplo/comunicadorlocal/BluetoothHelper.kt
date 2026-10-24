@@ -5,105 +5,196 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
 import android.os.Handler
-import android.os.Message
+import java.io.BufferedReader
 import java.io.IOException
-import java.io.InputStream
-import java.io.OutputStream
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.io.PrintWriter
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 
-class BluetoothHelper(
-    private val activity: MainActivity,
-    private val handler: Handler
-) {
+class BluetoothHelper(private val handler: Handler) {
     companion object {
         const val MENSAGEM_RECEBIDA = 1
         const val STATUS_CONECTADO = 2
         const val STATUS_ERRO = 3
+        const val STATUS_DESCONECTADO = 4
+        const val STATUS_ESPERANDO = 5
+        const val STATUS_CONEXAO_FALHOU = 6
         private val UUID_BT = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     }
 
-    private var adaptador = BluetoothAdapter.getDefaultAdapter()
-    private var servidor: ServidorThread? = null
-    private var cliente: ClienteThread? = null
-    private var conectado: ConectadoThread? = null
+    private val adaptador: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
+    @Volatile private var servidor: ServidorThread? = null
+    @Volatile private var cliente: ClienteThread? = null
+    @Volatile private var conexaoAtiva: ConectadoThread? = null
+    @Volatile private var nomeDispositivoConectado: String? = null
 
+    fun conectado(): Boolean = conexaoAtiva != null
+
+    fun nomeConectado(): String = nomeDispositivoConectado ?: "Aparelho Bluetooth"
+
+    @Synchronized
     fun iniciarServidor(nome: String) {
-        servidor = ServidorThread(nome)
-        servidor?.start()
+        if (conexaoAtiva != null || servidor?.isAlive == true) return
+        servidor = ServidorThread(nome).also { it.start() }
     }
 
+    @Synchronized
     fun conectar(dispositivo: BluetoothDevice) {
-        cliente = ClienteThread(dispositivo)
-        cliente?.start()
+        if (cliente?.isAlive == true || conexaoAtiva != null) return
+        servidor?.cancelar()
+        servidor = null
+        cliente = ClienteThread(dispositivo).also { it.start() }
     }
 
-    fun enviarMensagem(texto: String): Boolean {
-        return conectado?.enviar(texto) ?: false
-    }
+    fun enviarMensagem(texto: String): Boolean = conexaoAtiva?.enviar(texto) ?: false
 
+    @Synchronized
     fun pararTudo() {
         servidor?.cancelar()
         cliente?.cancelar()
-        conectado?.cancelar()
+        conexaoAtiva?.cancelar()
         servidor = null
         cliente = null
-        conectado = null
+        conexaoAtiva = null
+        nomeDispositivoConectado = null
     }
 
-    private inner class ServidorThread(nome: String) : Thread() {
-        private val socket: BluetoothServerSocket? = adaptador.listenUsingRfcommWithServiceRecord(nome, UUID_BT)
-        override fun run() {
-            var socket: BluetoothSocket?
-            while (true) {
-                socket = this@ServidorThread.socket?.accept()
-                if (socket != null) {
-                    conectado = ConectadoThread(socket)
-                    conectado?.start()
-                    handler.obtainMessage(STATUS_CONECTADO).sendToTarget()
-                    this@ServidorThread.socket?.close()
-                    break
-                }
-            }
+    @Synchronized
+    private fun estabelecerConexao(socket: BluetoothSocket, nomeDispositivo: String) {
+        if (conexaoAtiva != null) {
+            socket.close()
+            return
         }
-        fun cancelar() { socket?.close() }
+        servidor?.cancelar()
+        nomeDispositivoConectado = nomeDispositivo
+        conexaoAtiva = ConectadoThread(socket).also {
+            it.start()
+            handler.obtainMessage(STATUS_CONECTADO, nomeDispositivo).sendToTarget()
+        }
     }
 
-    private inner class ClienteThread(val dispositivo: BluetoothDevice) : Thread() {
-        private val socket = dispositivo.createRfcommSocketToServiceRecord(UUID_BT)
+    private fun erro(mensagem: String) {
+        handler.obtainMessage(STATUS_ERRO, mensagem).sendToTarget()
+    }
+
+    private inner class ServidorThread(private val nome: String) : Thread() {
+        @Volatile private var socketServidor: BluetoothServerSocket? = null
+
         override fun run() {
             try {
-                adaptador.cancelDiscovery()
-                socket.connect()
-                conectado = ConectadoThread(socket)
-                conectado?.start()
-                handler.obtainMessage(STATUS_CONECTADO).sendToTarget()
-            } catch (e: IOException) {
-                handler.obtainMessage(STATUS_ERRO, "Não foi possível conectar").sendToTarget()
+                val bluetooth = adaptador ?: throw IOException("Bluetooth não disponível.")
+                socketServidor = bluetooth.listenUsingRfcommWithServiceRecord(nome, UUID_BT)
+                handler.obtainMessage(STATUS_ESPERANDO).sendToTarget()
+                val socket = socketServidor?.accept()
+                if (socket != null) {
+                    val nomeRemoto = try {
+                        socket.remoteDevice.name?.takeIf { it.isNotBlank() } ?: "Aparelho Bluetooth"
+                    } catch (_: SecurityException) {
+                        "Aparelho Bluetooth"
+                    }
+                    estabelecerConexao(socket, nomeRemoto)
+                }
+            } catch (_: IOException) {
+                if (!isInterrupted) erro("Não foi possível aguardar conexão Bluetooth.")
+            } catch (_: SecurityException) {
+                erro("Permissão de Bluetooth não concedida.")
+            } finally {
+                try {
+                    socketServidor?.close()
+                } catch (_: IOException) {
+                }
+                socketServidor = null
             }
         }
-        fun cancelar() { socket.close() }
+
+        fun cancelar() {
+            interrupt()
+            try {
+                socketServidor?.close()
+            } catch (_: IOException) {
+            }
+        }
+    }
+
+    private inner class ClienteThread(private val dispositivo: BluetoothDevice) : Thread() {
+        @Volatile private var socket: BluetoothSocket? = null
+
+        override fun run() {
+            try {
+                socket = dispositivo.createRfcommSocketToServiceRecord(UUID_BT)
+                socket?.connect()
+                val nome = try {
+                    dispositivo.name?.takeIf { it.isNotBlank() } ?: "Aparelho Bluetooth"
+                } catch (_: SecurityException) {
+                    "Aparelho Bluetooth"
+                }
+                socket?.let { estabelecerConexao(it, nome) }
+            } catch (_: IOException) {
+                if (!isInterrupted) {
+                    handler.obtainMessage(STATUS_CONEXAO_FALHOU).sendToTarget()
+                }
+                cancelar()
+            } catch (_: SecurityException) {
+                erro("Permissão de Bluetooth não concedida.")
+                cancelar()
+            }
+        }
+
+        fun cancelar() {
+            interrupt()
+            try {
+                socket?.close()
+            } catch (_: IOException) {
+            }
+        }
     }
 
     private inner class ConectadoThread(private val socket: BluetoothSocket) : Thread() {
-        private val entrada: InputStream = socket.inputStream
-        private val saida: OutputStream = socket.outputStream
-        private val buffer = ByteArray(1024)
+        private val escrita = PrintWriter(
+            OutputStreamWriter(socket.outputStream, StandardCharsets.UTF_8),
+            true
+        )
+
         override fun run() {
-            var lido: Int
-            while (true) {
-                try {
-                    lido = entrada.read(buffer)
-                    val texto = String(buffer, 0, lido)
-                    handler.obtainMessage(MENSAGEM_RECEBIDA, texto).sendToTarget()
-                } catch (e: IOException) { break }
+            try {
+                val leitura = BufferedReader(
+                    InputStreamReader(socket.inputStream, StandardCharsets.UTF_8)
+                )
+                while (true) {
+                    val linha = leitura.readLine() ?: break
+                    handler.obtainMessage(MENSAGEM_RECEBIDA, linha).sendToTarget()
+                }
+            } catch (_: IOException) {
+            } finally {
+                val encerradaPeloUsuario = isInterrupted
+                cancelar()
+                desconectado(this, !encerradaPeloUsuario)
             }
         }
+
+        @Synchronized
         fun enviar(texto: String): Boolean {
-            return try {
-                saida.write(texto.toByteArray())
-                true
-            } catch (e: IOException) { false }
+            if (!socket.isConnected) return false
+            escrita.println(texto)
+            return !escrita.checkError()
         }
-        fun cancelar() { socket.close() }
+
+        fun cancelar() {
+            interrupt()
+            try {
+                socket.close()
+            } catch (_: IOException) {
+            }
+        }
+    }
+
+    @Synchronized
+    private fun desconectado(conexao: ConectadoThread, notificar: Boolean) {
+        if (conexaoAtiva !== conexao) return
+        conexaoAtiva = null
+        nomeDispositivoConectado = null
+        if (notificar) handler.obtainMessage(STATUS_DESCONECTADO).sendToTarget()
     }
 }

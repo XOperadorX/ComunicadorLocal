@@ -2,4 +2,7 @@
 <resources>
     <color name="fundo_tela">#F5F5F5</color>
     <color name="branco">#FFFFFF</color>
+    <color name="icone_comunicador_azul_claro">#1769D2</color>
+    <color name="icone_comunicador_azul_escuro">#123B78</color>
+    <color name="icone_comunicador_verde">#71E0A2</color>
 </resources>

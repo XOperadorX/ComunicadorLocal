@@ -3,21 +3,59 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+def releaseSigningEnvironment = [
+    storeFile: System.getenv('APP_RELEASE_STORE_FILE'),
+    storePassword: System.getenv('APP_RELEASE_STORE_PASSWORD'),
+    keyAlias: System.getenv('APP_RELEASE_KEY_ALIAS'),
+    keyPassword: System.getenv('APP_RELEASE_KEY_PASSWORD')
+]
+def hasAnyReleaseSigningValue = releaseSigningEnvironment.values().any {
+    it != null && !it.trim().isEmpty()
+}
+def hasCompleteReleaseSigning = releaseSigningEnvironment.values().every {
+    it != null && !it.trim().isEmpty()
+}
+
+if (hasAnyReleaseSigningValue && !hasCompleteReleaseSigning) {
+    throw new GradleException(
+        'Configure APP_RELEASE_STORE_FILE, APP_RELEASE_STORE_PASSWORD, ' +
+            'APP_RELEASE_KEY_ALIAS e APP_RELEASE_KEY_PASSWORD para assinar o release.'
+    )
+}
+
 android {
     namespace 'com.exemplo.comunicadorlocal'
     compileSdk 34
+
+    buildFeatures {
+        buildConfig true
+    }
 
     defaultConfig {
         applicationId "com.exemplo.comunicadorlocal"
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode 3
+        versionName "1.2"
+    }
+
+    signingConfigs {
+        release {
+            if (hasCompleteReleaseSigning) {
+                storeFile rootProject.file(releaseSigningEnvironment.storeFile)
+                storePassword releaseSigningEnvironment.storePassword
+                keyAlias releaseSigningEnvironment.keyAlias
+                keyPassword releaseSigningEnvironment.keyPassword
+            }
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
+            if (hasCompleteReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     
@@ -28,6 +66,19 @@ android {
     
     kotlinOptions {
         jvmTarget = '17'
+    }
+}
+
+tasks.configureEach {
+    if (name == 'packageRelease' || name == 'bundleRelease') {
+        doFirst {
+            if (!hasCompleteReleaseSigning) {
+                throw new GradleException(
+                    'Release sem assinatura. Configure as quatro variáveis APP_RELEASE_* ' +
+                        'descritas no README.md antes de gerar APK/AAB de release.'
+                )
+            }
+        }
     }
 }
 
