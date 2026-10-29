@@ -6,27 +6,42 @@ import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.Uri
 import android.net.wifi.p2p.WifiP2pDevice
+import android.os.SystemClock
+import android.media.MediaRecorder
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.provider.OpenableColumns
+import android.util.Base64
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ListView
+import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStreamWriter
+import java.text.DecimalFormat
 import java.text.SimpleDateFormat
 import java.nio.charset.StandardCharsets
 import java.util.Date
@@ -46,6 +61,14 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
     private var modoAtual = Modo.NENHUM
     private var modoPendente = Modo.NENHUM
     private var chatVisivel = false
+    private var appEmPrimeiroPlano = false
+    private var solicitouPermissaoNotificacoes = false
+    private var gravadorAudio: MediaRecorder? = null
+    private var arquivoAudioGravado: File? = null
+    private var dialogoTransferencia: AlertDialog? = null
+    private var anexoRecebido: AnexoRecebido? = null
+    private var uriCapturaPendente: Uri? = null
+    private var arquivoCapturaPendente: File? = null
     private var mensagemSelecionada = -1
     private var aparelhoSelecionado: String? = null
     private var alvoDesconectado = false
@@ -59,20 +82,64 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
             }
         }
 
+    private val selecionarImagem =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let { enviarAnexo(it, "imagem") }
+        }
+
+    private val selecionarAudio =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let { enviarAnexo(it, "audio") }
+        }
+
+    private val selecionarVideo =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let { enviarAnexo(it, "video") }
+        }
+
+    private val capturarImagem =
+        registerForActivityResult(ActivityResultContracts.TakePicture()) { capturada ->
+            val uri = uriCapturaPendente
+            val arquivo = arquivoCapturaPendente
+            uriCapturaPendente = null
+            arquivoCapturaPendente = null
+            if (capturada && uri != null && arquivo != null) enviarAnexo(uri, "imagem", arquivo)
+            else arquivo?.delete()
+        }
+
+    private val permissaoGravacaoAudio =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { concedida ->
+            if (concedida) iniciarGravacaoAudio()
+            else Toast.makeText(this, "A permissão de microfone é necessária para gravar áudio.", Toast.LENGTH_LONG).show()
+        }
+
+    private val permissaoNotificacoes =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            if (chatVisivel && modoAtual == Modo.BLUETOOTH) iniciarBtServidor()
+        }
+
     private enum class Modo { NENHUM, BLUETOOTH, WIFI_DIRECT }
-    private enum class EstadoBluetooth { CONECTADO, ESPERANDO, DESCONECTADO }
+    private enum class EstadoBluetooth { CONECTADO, ESPERANDO, CONECTANDO, DESCONECTADO }
+    private data class AnexoRecebido(
+        val id: String,
+        val tipo: String,
+        val mimeType: String,
+        val nome: String,
+        val arquivo: File,
+        val saida: FileOutputStream
+    )
 
     private val handler = object : Handler(Looper.getMainLooper()) {
         override fun handleMessage(msg: Message) {
             if (!chatVisivel || modoAtual != Modo.BLUETOOTH) return
             when (msg.what) {
                 BluetoothHelper.MENSAGEM_RECEBIDA ->
-                    adicionarMensagem(msg.obj.toString(), btHelper.nomeConectado(), ehMinha = false)
+                    processarMensagemRecebida(msg.obj.toString(), btHelper.nomeConectado())
                 BluetoothHelper.STATUS_CONECTADO -> {
                     aparelhoSelecionado = msg.obj?.toString()
                     atualizarStatusBluetooth(
                         EstadoBluetooth.CONECTADO,
-                        "Conectado: ${aparelhoSelecionado ?: "Aparelho Bluetooth"}"
+                        "● Conectado: ${aparelhoSelecionado ?: "Aparelho Bluetooth"}"
                     )
                     alvoDesconectado = false
                     btnEnviar.isEnabled = true
@@ -84,23 +151,24 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
                     if (btHelper.conectado()) {
                         atualizarStatusBluetooth(
                             EstadoBluetooth.CONECTADO,
-                            "Conectado: ${btHelper.nomeConectado()}"
+                            "● Conectado: ${btHelper.nomeConectado()}"
                         )
                     } else if (alvoDesconectado) {
                         atualizarStatusBluetooth(
                             EstadoBluetooth.DESCONECTADO,
-                            "Desconectado: ${aparelhoSelecionado ?: "aparelho Bluetooth"}"
+                            "● Desconectado: ${aparelhoSelecionado ?: "aparelho Bluetooth"}"
                         )
                     } else {
-                        atualizarStatusBluetooth(EstadoBluetooth.ESPERANDO, "Esperando para conectar...")
+                        atualizarStatusBluetooth(EstadoBluetooth.ESPERANDO, "● Conectado: aguardando aparelho...")
                     }
                 }
                 BluetoothHelper.STATUS_DESCONECTADO -> {
+                    descartarAnexoRecebido()
                     btnEnviar.isEnabled = true
                     alvoDesconectado = true
                     atualizarStatusBluetooth(
                         EstadoBluetooth.DESCONECTADO,
-                        "Desconectado: ${aparelhoSelecionado ?: "aparelho Bluetooth"}"
+                        "● Desconectado: ${aparelhoSelecionado ?: "aparelho Bluetooth"}"
                     )
                     registrarComando("conexão encerrada; aguardando novamente")
                     Handler(Looper.getMainLooper()).postDelayed({
@@ -108,20 +176,22 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
                     }, 500)
                 }
                 BluetoothHelper.STATUS_ERRO -> {
+                    descartarAnexoRecebido()
                     btnEnviar.isEnabled = true
                     alvoDesconectado = true
                     atualizarStatusBluetooth(
                         EstadoBluetooth.DESCONECTADO,
-                        "Desconectado: ${aparelhoSelecionado ?: "aparelho Bluetooth"}"
+                        "● Desconectado: ${aparelhoSelecionado ?: "aparelho Bluetooth"}"
                     )
                     registrarComando("Bluetooth desconectado")
                 }
                 BluetoothHelper.STATUS_CONEXAO_FALHOU -> {
+                    descartarAnexoRecebido()
                     btnEnviar.isEnabled = true
                     alvoDesconectado = true
                     atualizarStatusBluetooth(
                         EstadoBluetooth.DESCONECTADO,
-                        "Desconectado: ${aparelhoSelecionado ?: "aparelho Bluetooth"}"
+                        "● Desconectado: ${aparelhoSelecionado ?: "aparelho Bluetooth"}"
                     )
                     registrarComando("tentativa de conexão falhou")
                     Handler(Looper.getMainLooper()).postDelayed({
@@ -139,6 +209,7 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
         carregarMensagens()
         carregarMensagensPendentes()
         wifiHelper.inicializar()
+        criarCanalNotificacoes()
         mostrarTelaInicial()
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -147,6 +218,16 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
                 else finish()
             }
         })
+    }
+
+    override fun onStart() {
+        super.onStart()
+        appEmPrimeiroPlano = true
+    }
+
+    override fun onStop() {
+        appEmPrimeiroPlano = false
+        super.onStop()
     }
 
     private fun mostrarTelaInicial() {
@@ -256,7 +337,7 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
             }
 
         btnEnviar.isEnabled = usandoBluetooth
-        tvStatus.text = "Conecte-se a outro aparelho para começar."
+        tvStatus.text = "● Desconectado: conecte-se a outro aparelho para começar."
         btnEnviar.setOnClickListener { enviarMensagem() }
         findViewById<Button>(R.id.btnBtDisponivel).setOnClickListener {
             alvoDesconectado = false
@@ -275,10 +356,27 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
         findViewById<Button>(R.id.btnLimparMensagens).setOnClickListener { limparMensagens() }
         findViewById<Button>(R.id.btnArquivarMensagens).setOnClickListener { arquivarMensagens() }
         findViewById<Button>(R.id.btnFavoritarMensagem).setOnClickListener { alternarFavorita() }
+        findViewById<Button>(R.id.btnEnviarImagem).setOnClickListener {
+            selecionarImagem.launch("image/*")
+        }
+        findViewById<Button>(R.id.btnEnviarAudio).setOnClickListener {
+            selecionarAudio.launch("audio/*")
+        }
+        findViewById<Button>(R.id.btnEnviarVideo).setOnClickListener {
+            selecionarVideo.launch("video/*")
+        }
+        findViewById<Button>(R.id.btnTirarFoto).setOnClickListener { tirarFoto() }
+        findViewById<Button>(R.id.btnGravarAudio).setOnClickListener {
+            if (gravadorAudio == null) solicitarOuIniciarGravacaoAudio()
+            else pararGravacaoAudio()
+        }
         listaConversa.setOnItemClickListener { _, _, position, _ ->
             mensagemSelecionada = position
             adaptadorConversa.notifyDataSetChanged()
             registrarComando("mensagem ${position + 1} selecionada")
+            mensagens.getOrNull(position)?.let { mensagem ->
+                if (mensagem.tipo != "texto") abrirAnexo(mensagem)
+            }
         }
 
         mensagens.forEach { mensagem ->
@@ -287,10 +385,18 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
         adaptadorConversa.notifyDataSetChanged()
         if (mensagens.isNotEmpty()) listaConversa.setSelection(mensagens.lastIndex)
 
-        if (usandoBluetooth) iniciarBtServidor()
+        if (usandoBluetooth) {
+            val precisaPermissaoNotificacoes = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                !solicitouPermissaoNotificacoes &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+            if (precisaPermissaoNotificacoes) solicitarPermissaoNotificacoes()
+            else iniciarBtServidor()
+        }
     }
 
     private fun voltarParaSelecao() {
+        pararGravacaoAudio(enviar = false)
         btHelper.pararTudo()
         wifiHelper.pararTudo()
         alvoDesconectado = false
@@ -298,14 +404,591 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
         mostrarTelaInicial()
     }
 
-    private fun adicionarMensagem(texto: String, remetente: String, ehMinha: Boolean) {
-        val mensagem = Mensagem(remetente = remetente, texto = texto, ehMinha = ehMinha)
+    private fun adicionarMensagem(
+        texto: String,
+        remetente: String,
+        ehMinha: Boolean,
+        tipo: String = "texto",
+        arquivo: String? = null,
+        mimeType: String? = null,
+        nomeArquivo: String? = null
+    ) {
+        val mensagem = Mensagem(
+            remetente = remetente,
+            texto = texto,
+            ehMinha = ehMinha,
+            tipo = tipo,
+            arquivo = arquivo,
+            mimeType = mimeType,
+            nomeArquivo = nomeArquivo
+        )
         mensagem.favorita = favoritos().contains(chaveFavorita(mensagem))
         mensagens.add(mensagem)
         salvarMensagens()
         adaptadorConversa.notifyDataSetChanged()
         listaConversa.setSelection(adaptadorConversa.count - 1)
-        if (!ehMinha) registrarComando("receber mensagem")
+        if (!ehMinha) {
+            registrarComando("receber mensagem")
+            if (!appEmPrimeiroPlano) notificarMensagem(remetente, texto)
+        }
+    }
+
+    private fun processarMensagemRecebida(linha: String, remetente: String) {
+        when {
+            linha.startsWith(BluetoothHelper.PREFIXO_ANEXO_INICIO) -> {
+                iniciarRecepcaoAnexo(linha.removePrefix(BluetoothHelper.PREFIXO_ANEXO_INICIO))
+                return
+            }
+            linha.startsWith(BluetoothHelper.PREFIXO_ANEXO_PARTE) -> {
+                receberParteAnexo(linha.removePrefix(BluetoothHelper.PREFIXO_ANEXO_PARTE))
+                return
+            }
+            linha.startsWith(BluetoothHelper.PREFIXO_ANEXO_FIM) -> {
+                finalizarRecepcaoAnexo(linha.removePrefix(BluetoothHelper.PREFIXO_ANEXO_FIM), remetente)
+                return
+            }
+            linha.startsWith(BluetoothHelper.PREFIXO_ANEXO_CANCELAR) -> {
+                cancelarRecepcaoAnexo(linha.removePrefix(BluetoothHelper.PREFIXO_ANEXO_CANCELAR))
+                return
+            }
+        }
+        if (!linha.startsWith(PREFIXO_ANEXO)) {
+            adicionarMensagem(linha, remetente, ehMinha = false)
+            return
+        }
+        try {
+            val dados = String(
+                Base64.decode(linha.removePrefix(PREFIXO_ANEXO), Base64.NO_WRAP),
+                StandardCharsets.UTF_8
+            )
+            val json = JSONObject(dados)
+            val tipo = json.getString("tipo")
+            val mimeType = json.getString("mimeType")
+            val nome = json.getString("nome")
+            val prefixoMime = when (tipo) {
+                "imagem" -> "image/"
+                "audio" -> "audio/"
+                "video" -> "video/"
+                else -> throw IllegalArgumentException("Tipo de anexo inválido.")
+            }
+            if (!mimeType.startsWith(prefixoMime)) {
+                throw IllegalArgumentException("Tipo de anexo inválido.")
+            }
+            val bytes = Base64.decode(json.getString("dados"), Base64.NO_WRAP)
+            val arquivo = salvarAnexo(bytes, mimeType)
+            adicionarMensagem(
+                textoAnexo(tipo, nome),
+                remetente,
+                ehMinha = false,
+                tipo = tipo,
+                arquivo = arquivo.absolutePath,
+                mimeType = mimeType,
+                nomeArquivo = nome
+            )
+        } catch (exception: org.json.JSONException) {
+            Toast.makeText(this, "Não foi possível interpretar o anexo recebido.", Toast.LENGTH_LONG).show()
+        } catch (exception: IllegalArgumentException) {
+            Toast.makeText(this, exception.message ?: "Anexo inválido.", Toast.LENGTH_LONG).show()
+        } catch (exception: IOException) {
+            Toast.makeText(this, "Não foi possível salvar o anexo recebido.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun iniciarRecepcaoAnexo(payload: String) {
+        try {
+            val json = JSONObject(String(Base64.decode(payload, Base64.NO_WRAP), StandardCharsets.UTF_8))
+            val id = json.getString("id")
+            val tipo = json.getString("tipo")
+            val mimeType = json.getString("mimeType")
+            val nome = json.getString("nome")
+            val prefixoMime = prefixoMime(tipo)
+            require(id.matches(Regex("[A-Za-z0-9-]{1,64}")) && mimeType.startsWith(prefixoMime)) {
+                "Metadados de mídia inválidos."
+            }
+            descartarAnexoRecebido()
+            val arquivo = criarArquivoAnexo()
+            anexoRecebido = AnexoRecebido(
+                id,
+                tipo,
+                mimeType,
+                nome,
+                arquivo,
+                FileOutputStream(arquivo)
+            )
+        } catch (exception: org.json.JSONException) {
+            Toast.makeText(this, "Os dados do anexo recebido são inválidos.", Toast.LENGTH_LONG).show()
+        } catch (exception: IOException) {
+            Toast.makeText(this, "Não foi possível preparar o arquivo recebido.", Toast.LENGTH_LONG).show()
+        } catch (exception: IllegalArgumentException) {
+            Toast.makeText(this, "Não foi possível iniciar o recebimento do anexo.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun receberParteAnexo(payload: String) {
+        val separador = payload.indexOf('|')
+        if (separador <= 0) return
+        val id = payload.substring(0, separador)
+        val recebimento = anexoRecebido ?: return
+        if (recebimento.id != id) return
+        try {
+            val bytes = Base64.decode(payload.substring(separador + 1), Base64.NO_WRAP)
+            recebimento.saida.write(bytes)
+        } catch (exception: IOException) {
+            cancelarRecepcaoAnexo(id)
+            Toast.makeText(this, "Falha ao salvar partes do anexo recebido.", Toast.LENGTH_LONG).show()
+        } catch (exception: IllegalArgumentException) {
+            cancelarRecepcaoAnexo(id)
+            Toast.makeText(this, "O anexo recebido contém dados inválidos.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun finalizarRecepcaoAnexo(id: String, remetente: String) {
+        val recebimento = anexoRecebido ?: return
+        if (recebimento.id != id) return
+        anexoRecebido = null
+        try {
+            recebimento.saida.close()
+            adicionarMensagem(
+                textoAnexo(recebimento.tipo, recebimento.nome),
+                remetente,
+                ehMinha = false,
+                tipo = recebimento.tipo,
+                arquivo = recebimento.arquivo.absolutePath,
+                mimeType = recebimento.mimeType,
+                nomeArquivo = recebimento.nome
+            )
+        } catch (exception: IOException) {
+            recebimento.arquivo.delete()
+            Toast.makeText(this, "Não foi possível concluir o anexo recebido.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun cancelarRecepcaoAnexo(id: String) {
+        val recebimento = anexoRecebido ?: return
+        if (recebimento.id != id) return
+        anexoRecebido = null
+        try {
+            recebimento.saida.close()
+        } catch (exception: IOException) {
+            Toast.makeText(this, "Não foi possível fechar o arquivo recebido.", Toast.LENGTH_LONG).show()
+        } finally {
+            recebimento.arquivo.delete()
+        }
+    }
+
+    private fun descartarAnexoRecebido() {
+        anexoRecebido?.let { recebimento ->
+            try {
+                recebimento.saida.close()
+            } catch (exception: IOException) {
+                Toast.makeText(this, "Não foi possível fechar o anexo anterior.", Toast.LENGTH_LONG).show()
+            } finally {
+                recebimento.arquivo.delete()
+                anexoRecebido = null
+            }
+        }
+    }
+
+    private fun enviarAnexo(uri: Uri, tipo: String, origemTemporaria: File? = null) {
+        if (modoAtual != Modo.BLUETOOTH || !btHelper.conectado()) {
+            origemTemporaria?.delete()
+            Toast.makeText(this, "Conecte-se por Bluetooth antes de enviar arquivos.", Toast.LENGTH_LONG).show()
+            return
+        }
+        definirEnvioAtivo(true)
+        Thread({
+            var arquivo: File? = null
+            var erro: String? = null
+            try {
+                val prefixoMime = prefixoMime(tipo)
+                val mimeType = contentResolver.getType(uri)
+                    ?: if (tipo == "imagem") "image/*" else if (tipo == "video") "video/*" else "audio/*"
+                if (!mimeType.startsWith(prefixoMime)) {
+                    throw IllegalArgumentException("Formato de arquivo não compatível.")
+                }
+                val nome = nomeDoArquivo(uri)
+                arquivo = copiarParaAnexo(uri)
+                val tamanho = arquivo.length()
+                val id = java.util.UUID.randomUUID().toString()
+                val metadados = JSONObject()
+                    .put("id", id)
+                    .put("tipo", tipo)
+                    .put("mimeType", mimeType)
+                    .put("nome", nome)
+                val inicio = BluetoothHelper.PREFIXO_ANEXO_INICIO + Base64.encodeToString(
+                    metadados.toString().toByteArray(StandardCharsets.UTF_8),
+                    Base64.NO_WRAP
+                )
+                runOnUiThread {
+                    definirEnvioAtivo(true)
+                    if (tamanho > LIMIAR_ANIMACAO_BYTES) mostrarProgressoTransferencia(tamanho)
+                }
+                val inicioEnvio = SystemClock.elapsedRealtime()
+                var ultimaAtualizacao = inicioEnvio
+                val enviado = FileInputStream(arquivo).use { entrada ->
+                    btHelper.enviarArquivo(inicio, id, entrada) { enviados ->
+                        if (tamanho > LIMIAR_ANIMACAO_BYTES) {
+                            val agora = SystemClock.elapsedRealtime()
+                            if (agora - ultimaAtualizacao >= INTERVALO_ATUALIZACAO_MS || enviados == tamanho) {
+                                ultimaAtualizacao = agora
+                                atualizarProgressoTransferencia(enviados, tamanho, inicioEnvio)
+                            }
+                        }
+                    }
+                }
+                if (enviado) {
+                    val caminhoArquivo = arquivo.absolutePath
+                    runOnUiThread {
+                        adicionarMensagem(
+                            textoAnexo(tipo, nome),
+                            "Você",
+                            ehMinha = true,
+                            tipo = tipo,
+                            arquivo = caminhoArquivo,
+                            mimeType = mimeType,
+                            nomeArquivo = nome
+                        )
+                        registrarComando("enviar $tipo por Bluetooth")
+                    }
+                    arquivo = null
+                } else {
+                    erro = "A conexão foi interrompida durante o envio do arquivo."
+                }
+            } catch (exception: IOException) {
+                erro = "Não foi possível ler ou salvar o arquivo selecionado."
+            } catch (exception: IllegalArgumentException) {
+                erro = exception.message ?: "Arquivo inválido."
+            } catch (exception: org.json.JSONException) {
+                erro = "Não foi possível preparar o arquivo para envio."
+            } catch (exception: SecurityException) {
+                erro = "O app não tem acesso ao arquivo selecionado."
+            } finally {
+                arquivo?.delete()
+                origemTemporaria?.delete()
+                runOnUiThread {
+                    ocultarProgressoTransferencia()
+                    definirEnvioAtivo(false)
+                }
+            }
+            erro?.let { mensagemErro ->
+                runOnUiThread {
+                    Toast.makeText(this, mensagemErro, Toast.LENGTH_LONG).show()
+                    if (modoAtual == Modo.BLUETOOTH) {
+                        atualizarStatusBluetooth(
+                            EstadoBluetooth.DESCONECTADO,
+                            "● Falha no envio. Verifique a conexão."
+                        )
+                    }
+                }
+            }
+        }, "envio-anexo").start()
+    }
+
+    private fun solicitarOuIniciarGravacaoAudio() {
+        if (modoAtual != Modo.BLUETOOTH || !btHelper.conectado()) {
+            Toast.makeText(this, "Conecte-se por Bluetooth antes de gravar áudio.", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            iniciarGravacaoAudio()
+        } else {
+            permissaoGravacaoAudio.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun iniciarGravacaoAudio() {
+        val diretorio = File(filesDir, DIRETORIO_ANEXOS)
+        if (!diretorio.exists() && !diretorio.mkdirs()) {
+            Toast.makeText(this, "Não foi possível preparar o armazenamento de áudio.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val arquivo = try {
+            File.createTempFile("gravacao-", ".m4a", diretorio)
+        } catch (exception: IOException) {
+            Toast.makeText(this, "Não foi possível criar o arquivo de áudio.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val gravador = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            MediaRecorder(this)
+        } else {
+            @Suppress("DEPRECATION")
+            MediaRecorder()
+        }
+        try {
+            gravador.apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setAudioSamplingRate(44_100)
+                setAudioEncodingBitRate(96_000)
+                setOutputFile(arquivo.absolutePath)
+                prepare()
+                start()
+            }
+            gravadorAudio = gravador
+            arquivoAudioGravado = arquivo
+            findViewById<Button>(R.id.btnGravarAudio).text = "Parar gravação"
+            registrarComando("gravar áudio")
+        } catch (exception: IOException) {
+            gravador.release()
+            arquivo.delete()
+            Toast.makeText(this, "Não foi possível iniciar a gravação.", Toast.LENGTH_LONG).show()
+        } catch (exception: IllegalStateException) {
+            gravador.release()
+            arquivo.delete()
+            Toast.makeText(this, "O gravador de áudio não está disponível.", Toast.LENGTH_LONG).show()
+        } catch (exception: RuntimeException) {
+            gravador.release()
+            arquivo.delete()
+            Toast.makeText(this, "Não foi possível configurar a gravação de áudio.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun pararGravacaoAudio(enviar: Boolean = true) {
+        val gravador = gravadorAudio ?: return
+        val arquivo = arquivoAudioGravado
+        gravadorAudio = null
+        arquivoAudioGravado = null
+        findViewById<Button>(R.id.btnGravarAudio)?.text = "Gravar áudio"
+        val gravacaoValida = try {
+            gravador.stop()
+            true
+        } catch (exception: RuntimeException) {
+            false
+        } finally {
+            gravador.release()
+        }
+        if (!gravacaoValida || arquivo == null || !arquivo.isFile || arquivo.length() == 0L) {
+            arquivo?.delete()
+            if (enviar) {
+                Toast.makeText(this, "A gravação ficou muito curta ou não pôde ser finalizada.", Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+        if (enviar) {
+            try {
+                val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", arquivo)
+                enviarAnexo(uri, "audio", arquivo)
+            } catch (exception: IllegalArgumentException) {
+                arquivo.delete()
+                Toast.makeText(this, "Não foi possível preparar o áudio gravado.", Toast.LENGTH_LONG).show()
+            }
+        } else {
+            arquivo.delete()
+        }
+    }
+
+    private fun copiarParaAnexo(uri: Uri): File {
+        val entrada = contentResolver.openInputStream(uri)
+            ?: throw IOException("Não foi possível abrir o arquivo selecionado.")
+        val arquivo = criarArquivoAnexo()
+        try {
+            entrada.use { origem ->
+                FileOutputStream(arquivo).use { destino -> origem.copyTo(destino) }
+            }
+        } catch (exception: IOException) {
+            arquivo.delete()
+            throw exception
+        }
+        return arquivo
+    }
+
+    private fun criarArquivoAnexo(): File {
+        val diretorio = File(filesDir, DIRETORIO_ANEXOS)
+        if (!diretorio.exists() && !diretorio.mkdirs()) {
+            throw IOException("Não foi possível criar o armazenamento de anexos.")
+        }
+        return File.createTempFile("anexo-", ".tmp", diretorio)
+    }
+
+    private fun nomeDoArquivo(uri: Uri): String {
+        val nome = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        return nome?.takeIf { it.isNotBlank() }
+            ?: when {
+                contentResolver.getType(uri)?.startsWith("image/") == true -> "imagem"
+                contentResolver.getType(uri)?.startsWith("video/") == true -> "video"
+                else -> "audio"
+            }
+    }
+
+    private fun prefixoMime(tipo: String): String = when (tipo) {
+        "imagem" -> "image/"
+        "audio" -> "audio/"
+        "video" -> "video/"
+        else -> throw IllegalArgumentException("Tipo de arquivo não compatível.")
+    }
+
+    private fun tirarFoto() {
+        if (modoAtual != Modo.BLUETOOTH || !btHelper.conectado()) {
+            Toast.makeText(this, "Conecte-se por Bluetooth antes de tirar uma foto para enviar.", Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            val diretorio = File(filesDir, DIRETORIO_ANEXOS)
+            if (!diretorio.exists() && !diretorio.mkdirs()) {
+                throw IOException("Não foi possível preparar o armazenamento da foto.")
+            }
+            val arquivo = File.createTempFile("foto-", ".jpg", diretorio)
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", arquivo)
+            arquivoCapturaPendente = arquivo
+            uriCapturaPendente = uri
+            capturarImagem.launch(uri)
+        } catch (exception: IOException) {
+            Toast.makeText(this, "Não foi possível preparar a captura da foto.", Toast.LENGTH_LONG).show()
+        } catch (exception: IllegalArgumentException) {
+            Toast.makeText(this, "Não foi possível iniciar a câmera.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun definirEnvioAtivo(ativo: Boolean) {
+        if (!chatVisivel) return
+        btnEnviar.isEnabled = !ativo && modoAtual == Modo.BLUETOOTH
+        findViewById<Button>(R.id.btnEnviarImagem).isEnabled = !ativo
+        findViewById<Button>(R.id.btnEnviarAudio).isEnabled = !ativo
+        findViewById<Button>(R.id.btnEnviarVideo).isEnabled = !ativo
+        findViewById<Button>(R.id.btnTirarFoto).isEnabled = !ativo
+        findViewById<Button>(R.id.btnGravarAudio).isEnabled = !ativo
+    }
+
+    private fun mostrarProgressoTransferencia(tamanhoTotal: Long) {
+        if (!chatVisivel || isFinishing) return
+        val conteudo = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(24, 20, 24, 12)
+        }
+        conteudo.addView(ProgressBar(this).apply { isIndeterminate = true })
+        conteudo.addView(TextView(this).apply {
+            id = ID_TEXTO_TRANSFERENCIA
+            text = "Enviando ${formatarTamanho(tamanhoTotal)}..."
+            setPadding(20, 0, 0, 0)
+        })
+        dialogoTransferencia = AlertDialog.Builder(this)
+            .setTitle("Enviando arquivo")
+            .setView(conteudo)
+            .setCancelable(false)
+            .create()
+            .also { it.show() }
+    }
+
+    private fun atualizarProgressoTransferencia(enviados: Long, total: Long, inicio: Long) {
+        runOnUiThread {
+            val dialogo = dialogoTransferencia ?: return@runOnUiThread
+            val decorridoMs = (SystemClock.elapsedRealtime() - inicio).coerceAtLeast(1)
+            val kbps = enviados * 8.0 / decorridoMs
+            dialogo.findViewById<TextView>(ID_TEXTO_TRANSFERENCIA)?.text =
+                "${formatarTamanho(enviados)} / ${formatarTamanho(total)} · ${DecimalFormat("0.##").format(kbps)} kbps"
+        }
+    }
+
+    private fun ocultarProgressoTransferencia() {
+        dialogoTransferencia?.dismiss()
+        dialogoTransferencia = null
+    }
+
+    private fun formatarTamanho(bytes: Long): String {
+        val unidades = arrayOf("B", "KB", "MB", "GB", "TB")
+        var tamanho = bytes.toDouble()
+        var unidade = 0
+        while (tamanho >= 1024 && unidade < unidades.lastIndex) {
+            tamanho /= 1024
+            unidade++
+        }
+        return "${DecimalFormat("0.##").format(tamanho)} ${unidades[unidade]}"
+    }
+
+    private fun salvarAnexo(bytes: ByteArray, mimeType: String): File {
+        val diretorio = File(filesDir, DIRETORIO_ANEXOS)
+        if (!diretorio.exists() && !diretorio.mkdirs()) {
+            throw IOException("Não foi possível criar o armazenamento de anexos.")
+        }
+        val extensao = android.webkit.MimeTypeMap.getSingleton()
+            .getExtensionFromMimeType(mimeType)
+            ?.takeIf { it.matches(Regex("[A-Za-z0-9]{1,8}")) }
+            ?: "bin"
+        val arquivo = File(diretorio, "${java.util.UUID.randomUUID()}.$extensao")
+        FileOutputStream(arquivo).use { it.write(bytes) }
+        return arquivo
+    }
+
+    private fun textoAnexo(tipo: String, nome: String): String =
+        "${when (tipo) {
+            "imagem" -> "Imagem"
+            "video" -> "Vídeo"
+            else -> "Áudio"
+        }}: $nome"
+
+    private fun abrirAnexo(mensagem: Mensagem) {
+        val caminho = mensagem.arquivo
+        if (caminho.isNullOrBlank() || !File(caminho).isFile) {
+            Toast.makeText(this, "Este anexo não está mais disponível.", Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", File(caminho))
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mensagem.mimeType ?: "*/*")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(intent)
+        } catch (exception: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, "Nenhum aplicativo pode abrir este arquivo.", Toast.LENGTH_LONG).show()
+        } catch (exception: IllegalArgumentException) {
+            Toast.makeText(this, "Não foi possível abrir este anexo.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun criarCanalNotificacoes() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val canal = android.app.NotificationChannel(
+                CANAL_NOTIFICACOES,
+                "Mensagens recebidas",
+                android.app.NotificationManager.IMPORTANCE_DEFAULT
+            )
+            getSystemService(android.app.NotificationManager::class.java).createNotificationChannel(canal)
+        }
+    }
+
+    private fun solicitarPermissaoNotificacoes() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !solicitouPermissaoNotificacoes &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            solicitouPermissaoNotificacoes = true
+            permissaoNotificacoes.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun notificarMensagem(remetente: String, texto: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) return
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendente = android.app.PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        val notificacao = NotificationCompat.Builder(this, CANAL_NOTIFICACOES)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("Nova mensagem de $remetente")
+            .setContentText(texto)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(texto))
+            .setContentIntent(pendente)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+        NotificationManagerCompat.from(this).notify(ID_NOTIFICACAO, notificacao)
     }
 
     private fun iniciarBtServidor() {
@@ -323,14 +1006,14 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
         btHelper.iniciarServidor("ComunicadorLocal")
         btnEnviar.isEnabled = btHelper.conectado()
         if (btHelper.conectado()) {
-            atualizarStatusBluetooth(EstadoBluetooth.CONECTADO, "Conectado: ${btHelper.nomeConectado()}")
+            atualizarStatusBluetooth(EstadoBluetooth.CONECTADO, "● Conectado: ${btHelper.nomeConectado()}")
         } else if (alvoDesconectado) {
             atualizarStatusBluetooth(
                 EstadoBluetooth.DESCONECTADO,
-                "Desconectado: ${aparelhoSelecionado ?: "aparelho Bluetooth"}"
+                "● Desconectado: ${aparelhoSelecionado ?: "aparelho Bluetooth"}"
             )
         } else {
-            atualizarStatusBluetooth(EstadoBluetooth.ESPERANDO, "Esperando para conectar...")
+            atualizarStatusBluetooth(EstadoBluetooth.ESPERANDO, "● Conectado: aguardando aparelho...")
         }
         registrarComando("Bluetooth disponível para receber conexão")
     }
@@ -348,7 +1031,7 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
             aparelhoSelecionado = null
             alvoDesconectado = false
             atualizarStatusBluetooth(
-                EstadoBluetooth.ESPERANDO,
+                EstadoBluetooth.DESCONECTADO,
                 "Nenhum pareado. Pareie o aparelho nas configurações do Android."
             )
             return
@@ -361,8 +1044,8 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
                     ?: dispositivos[indice].address
                 alvoDesconectado = false
                 atualizarStatusBluetooth(
-                    EstadoBluetooth.ESPERANDO,
-                    "Esperando para conectar: $aparelhoSelecionado..."
+                    EstadoBluetooth.CONECTANDO,
+                    "● Conectando ou ocupado: $aparelhoSelecionado..."
                 )
                 btHelper.conectar(dispositivos[indice])
             }
@@ -497,7 +1180,11 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
                         ehMinha = true,
                         favorita = item.optBoolean("favorita"),
                         pendente = true,
-                        hora = item.getString("hora")
+                        hora = item.getString("hora"),
+                        tipo = item.optString("tipo", "texto"),
+                        arquivo = item.optString("arquivo").takeIf { it.isNotBlank() },
+                        mimeType = item.optString("mimeType").takeIf { it.isNotBlank() },
+                        nomeArquivo = item.optString("nomeArquivo").takeIf { it.isNotBlank() }
                     )
                 )
             }
@@ -516,6 +1203,10 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
                     .put("texto", mensagem.texto)
                     .put("favorita", mensagem.favorita)
                     .put("hora", mensagem.hora)
+                    .put("tipo", mensagem.tipo)
+                    .put("arquivo", mensagem.arquivo)
+                    .put("mimeType", mensagem.mimeType)
+                    .put("nomeArquivo", mensagem.nomeArquivo)
             )
         }
         getSharedPreferences(PREFERENCIAS_PENDENTES, MODE_PRIVATE)
@@ -538,7 +1229,11 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
                     ehMinha = item.getBoolean("ehMinha"),
                     favorita = item.optBoolean("favorita"),
                     pendente = item.optBoolean("pendente"),
-                    hora = item.getString("hora")
+                    hora = item.getString("hora"),
+                    tipo = item.optString("tipo", "texto"),
+                    arquivo = item.optString("arquivo").takeIf { it.isNotBlank() },
+                    mimeType = item.optString("mimeType").takeIf { it.isNotBlank() },
+                    nomeArquivo = item.optString("nomeArquivo").takeIf { it.isNotBlank() }
                 )
                 mensagem.favorita = mensagem.favorita || favoritos().contains(chaveFavorita(mensagem))
                 mensagens.add(mensagem)
@@ -566,13 +1261,18 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
             .put("ehMinha", mensagem.ehMinha)
             .put("favorita", mensagem.favorita)
             .put("pendente", mensagem.pendente)
+            .put("tipo", mensagem.tipo)
+            .put("arquivo", mensagem.arquivo)
+            .put("mimeType", mensagem.mimeType)
+            .put("nomeArquivo", mensagem.nomeArquivo)
 
     private fun atualizarStatusBluetooth(estado: EstadoBluetooth, texto: String) {
         if (!::tvStatus.isInitialized) return
         tvStatus.text = texto
         val (fundo, frente) = when (estado) {
             EstadoBluetooth.CONECTADO -> Color.rgb(220, 237, 200) to Color.rgb(46, 125, 50)
-            EstadoBluetooth.ESPERANDO -> Color.rgb(255, 243, 205) to Color.rgb(154, 103, 0)
+            EstadoBluetooth.ESPERANDO -> Color.rgb(220, 237, 200) to Color.rgb(46, 125, 50)
+            EstadoBluetooth.CONECTANDO -> Color.rgb(255, 243, 205) to Color.rgb(154, 103, 0)
             EstadoBluetooth.DESCONECTADO -> Color.rgb(255, 235, 238) to Color.rgb(198, 40, 40)
         }
         tvStatus.setBackgroundColor(fundo)
@@ -773,6 +1473,9 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
 
     override fun onDestroy() {
         chatVisivel = false
+        ocultarProgressoTransferencia()
+        descartarAnexoRecebido()
+        pararGravacaoAudio(enviar = false)
         btHelper.pararTudo()
         wifiHelper.encerrar()
         super.onDestroy()
@@ -787,5 +1490,12 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
         private const val CHAVE_PENDENTES = "itens"
         private const val PREFERENCIAS_CONVERSA = "conversa_atual"
         private const val CHAVE_MENSAGENS = "mensagens"
+        private const val PREFIXO_ANEXO = "CML1_MEDIA|"
+        private const val DIRETORIO_ANEXOS = "message-media"
+        private const val CANAL_NOTIFICACOES = "mensagens-recebidas"
+        private const val ID_NOTIFICACAO = 1001
+        private const val ID_TEXTO_TRANSFERENCIA = 1002
+        private const val LIMIAR_ANIMACAO_BYTES = 1024 * 1024L
+        private const val INTERVALO_ATUALIZACAO_MS = 250L
     }
 }

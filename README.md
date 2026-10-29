@@ -1,17 +1,19 @@
 # Comunicador Local
 
-Aplicativo Android nativo, desenvolvido em Kotlin, para conversar entre aparelhos próximos por Bluetooth ou Wi-Fi Direct, sem depender de internet ou rede móvel.
+Aplicativo Android nativo, desenvolvido em Kotlin, para conversar entre aparelhos próximos por Bluetooth, sem depender de internet ou rede móvel.
 
 ## Como funciona
 
 O app tem duas telas:
 
-1. **Seleção de conexão:** escolha Bluetooth ou Wi-Fi Direct. Não é necessário criar conta nem informar senha.
-2. **Conversa:** no modo Bluetooth, o app começa automaticamente a aguardar conexões; no Wi-Fi Direct, crie uma sala ou procure outro aparelho.
+1. **Seleção de conexão:** escolha Bluetooth. O botão **Wi-Fi Direct** permanece desativado para implementação futura.
+2. **Conversa:** o app começa automaticamente a aguardar conexões Bluetooth. Não é necessário criar conta nem informar senha.
 
-Na conversa, o status Bluetooth fica verde quando conectado (com o nome do aparelho), amarelo enquanto aguarda e vermelho quando desconectado. Ao tentar conectar a um aparelho pareado, o status mostra o nome selecionado; em caso de falha, fica como **Desconectado: nome do aparelho**.
+Na conversa, o status Bluetooth fica verde como **Conectado**, amarelo como **Conectando** e vermelho como **Desconectado**. O nome do aparelho aparece no status. O Android não informa se o app no outro aparelho está conversando com uma terceira pessoa; por isso, o amarelo indica uma tentativa de conexão, não uma confirmação de que o aparelho está ocupado.
 
-Mensagens enviadas sem conexão Bluetooth ficam salvas na fila privada do app e são transmitidas quando a conexão for estabelecida; elas aparecem marcadas como pendentes. O histórico da conversa também é salvo no telefone e permanece após sair do app ou arquivar. **Limpar** apaga o histórico atual e as mensagens pendentes. **Arquivar** salva uma cópia sem apagar o histórico e abre a lista de arquivos por data e hora; selecione um arquivo para ler ou exclua apenas essa cópia. Os arquivos e favoritos ficam no armazenamento privado do app. A linha inferior informa a ação executada. A tela inicial exibe a versão **1.2**.
+Além de texto, é possível enviar imagens, vídeos e arquivos de áudio sem um limite de tamanho definido pelo app. Também é possível gravar um áudio no app e enviá-lo diretamente, ou tirar uma foto com a câmera e enviá-la. Para anexos maiores que **1 MB**, aparece uma animação de envio com tamanho transferido, tamanho total e velocidade em kbps. A transferência depende do espaço livre no telefone, da memória e da estabilidade/velocidade do Bluetooth. Toque em uma mensagem de mídia para abri-la em um aplicativo compatível. Os dois aparelhos precisam ter a versão 1.5 para transferir mídia.
+
+Cada mensagem registra a data e a hora de envio ou recebimento. Mensagens enviadas sem conexão Bluetooth ficam salvas na fila privada do app e são transmitidas quando a conexão for estabelecida; elas aparecem marcadas como pendentes. Mensagens recebidas geram uma notificação quando a conversa está conectada e o app está em segundo plano; no Android 13 ou superior, permita notificações quando solicitado. O histórico da conversa também é salvo no telefone e permanece após sair do app ou arquivar. **Limpar** apaga o histórico atual e as mensagens pendentes. **Arquivar** salva uma cópia sem apagar o histórico e abre a lista de arquivos por data e hora; selecione um arquivo para ler ou exclua apenas essa cópia. Os arquivos e favoritos ficam no armazenamento privado do app. A linha inferior informa a ação executada. Os botões foram compactados para aproveitar melhor a tela do celular. A tela inicial exibe a versão **1.5**.
 
 ## Conectar aparelhos
 
@@ -21,20 +23,15 @@ Mensagens enviadas sem conexão Bluetooth ficam salvas na fila privada do app e 
 2. Pareie os aparelhos nas configurações do Android.
 3. No primeiro aparelho, escolha **Bluetooth**; ele ficará disponível automaticamente.
 4. No segundo, escolha **Bluetooth**, toque em **Conectar pareado** e selecione o primeiro aparelho.
-5. Quando o status indicar conexão, digite e envie mensagens.
+5. Quando o status ficar verde, envie mensagens, imagens, vídeos ou arquivos de áudio; use **Gravar áudio** para gravar ou **Foto** para capturar uma imagem com a câmera. Os anexos exigem que o aparelho esteja conectado e que ambos usem a versão 1.5. Na primeira gravação, permita acesso ao microfone.
 
-O app procura aparelhos que já estejam pareados pelo Android; o pareamento não é feito dentro do app. Se a conexão for encerrada, o app volta automaticamente a aguardar outra conexão.
+O app procura aparelhos que já estejam pareados pelo Android; o pareamento não é feito dentro do app. Se a conexão for encerrada, o app volta automaticamente a aguardar outra conexão. Em vermelho, o nome indica que a conexão foi encerrada ou falhou; amarelo indica conexão em andamento. Não é possível confirmar por Bluetooth se uma conexão falhou porque o outro aparelho está usando o app com outra pessoa ou porque está desconectado.
 
 Toque em uma mensagem para selecioná-la e use **Favoritar** para marcá-la ou removê-la dos favoritos. **Arquivar** salva a conversa no armazenamento privado do app, e **Limpar** apaga as mensagens da conversa atual. A linha inferior da tela informa o comando executado.
 
 ### Wi-Fi Direct
 
-1. Instale o app nos dois aparelhos e conceda a permissão de dispositivos Wi-Fi próximos.
-2. No aparelho que criará a sala, escolha **Wi-Fi Direct** e toque em **Criar Sala**.
-3. No outro aparelho, escolha **Wi-Fi Direct**, toque em **Procurar** e selecione a sala.
-4. Aguarde a conexão e então envie mensagens.
-
-O Wi-Fi Direct precisa estar disponível e ativado nos aparelhos. A descoberta e a conexão podem variar conforme o fabricante e a versão do Android.
+O botão está desativado nesta versão. A implementação existente foi mantida no projeto para uso futuro.
 
 ## Requisitos
 

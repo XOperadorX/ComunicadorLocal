@@ -7,6 +7,10 @@ data class Mensagem(
     val ehMinha: Boolean,
     var favorita: Boolean = false,
     var pendente: Boolean = false,
-    val hora: String = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+    val tipo: String = "texto",
+    val arquivo: String? = null,
+    val mimeType: String? = null,
+    val nomeArquivo: String? = null,
+    val hora: String = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
         .format(java.util.Date())
 )

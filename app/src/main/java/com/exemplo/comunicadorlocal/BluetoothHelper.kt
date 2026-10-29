@@ -5,8 +5,10 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
 import android.os.Handler
+import android.util.Base64
 import java.io.BufferedReader
 import java.io.IOException
+import java.io.InputStream
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.io.PrintWriter
@@ -21,6 +23,10 @@ class BluetoothHelper(private val handler: Handler) {
         const val STATUS_DESCONECTADO = 4
         const val STATUS_ESPERANDO = 5
         const val STATUS_CONEXAO_FALHOU = 6
+        const val PREFIXO_ANEXO_INICIO = "CML2_MEDIA_BEGIN|"
+        const val PREFIXO_ANEXO_PARTE = "CML2_MEDIA_CHUNK|"
+        const val PREFIXO_ANEXO_FIM = "CML2_MEDIA_END|"
+        const val PREFIXO_ANEXO_CANCELAR = "CML2_MEDIA_ABORT|"
         private val UUID_BT = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
     }
 
@@ -49,6 +55,13 @@ class BluetoothHelper(private val handler: Handler) {
     }
 
     fun enviarMensagem(texto: String): Boolean = conexaoAtiva?.enviar(texto) ?: false
+
+    fun enviarArquivo(
+        inicio: String,
+        id: String,
+        entrada: InputStream,
+        progresso: (Long) -> Unit
+    ): Boolean = conexaoAtiva?.enviarArquivo(inicio, id, entrada, progresso) ?: false
 
     @Synchronized
     fun pararTudo() {
@@ -154,7 +167,7 @@ class BluetoothHelper(private val handler: Handler) {
     private inner class ConectadoThread(private val socket: BluetoothSocket) : Thread() {
         private val escrita = PrintWriter(
             OutputStreamWriter(socket.outputStream, StandardCharsets.UTF_8),
-            true
+            false
         )
 
         override fun run() {
@@ -174,10 +187,42 @@ class BluetoothHelper(private val handler: Handler) {
             }
         }
 
-        @Synchronized
-        fun enviar(texto: String): Boolean {
+        fun enviar(texto: String): Boolean = synchronized(escrita) {
+            escreverLinha(texto)
+        }
+
+        fun enviarArquivo(
+            inicio: String,
+            id: String,
+            entrada: InputStream,
+            progresso: (Long) -> Unit
+        ): Boolean = synchronized(escrita) {
+            if (!escreverLinha(inicio)) return@synchronized false
+            val buffer = ByteArray(12 * 1024)
+            var total = 0L
+            try {
+                while (true) {
+                    val lidos = entrada.read(buffer)
+                    if (lidos < 0) break
+                    val trecho = Base64.encodeToString(buffer, 0, lidos, Base64.NO_WRAP)
+                    if (!escreverLinha("$PREFIXO_ANEXO_PARTE$id|$trecho")) {
+                        escreverLinha("$PREFIXO_ANEXO_CANCELAR$id")
+                        return@synchronized false
+                    }
+                    total += lidos
+                    progresso(total)
+                }
+                escreverLinha("$PREFIXO_ANEXO_FIM$id")
+            } catch (exception: IOException) {
+                escreverLinha("$PREFIXO_ANEXO_CANCELAR$id")
+                false
+            }
+        }
+
+        private fun escreverLinha(texto: String): Boolean {
             if (!socket.isConnected) return false
             escrita.println(texto)
+            escrita.flush()
             return !escrita.checkError()
         }
 

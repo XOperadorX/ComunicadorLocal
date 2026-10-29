@@ -34,19 +34,20 @@
         <Button
             android:id="@+id/btnModoBluetooth"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="52dp"
             android:text="Bluetooth"
-            android:textSize="18sp"
+            android:textSize="16sp"
             android:backgroundTint="#1976D2" />
 
         <Button
             android:id="@+id/btnModoWifi"
             android:layout_width="match_parent"
-            android:layout_height="64dp"
+            android:layout_height="52dp"
             android:layout_marginTop="16dp"
+            android:enabled="false"
             android:text="Wi-Fi Direct"
-            android:textSize="18sp"
-            android:backgroundTint="#EF6C00" />
+            android:textSize="16sp"
+            android:backgroundTint="#9E9E9E" />
 
         <TextView
             android:id="@+id/tvVersao"

@@ -37,7 +37,7 @@
         android:layout_marginTop="4dp"
         android:background="#FFF3CD"
         android:padding="12dp"
-        android:text="Esperando para conectar..."
+        android:text="Conectado: aguardando aparelho..."
         android:textColor="#9A6700"
         android:textStyle="bold" />
 
@@ -61,7 +61,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:paddingEnd="10dp"
-            android:text="● Esperando"
+            android:text="● Conectando"
             android:textColor="#B7791F"
             android:textSize="12sp" />
 
@@ -168,6 +168,46 @@
             android:layout_weight="1"
             android:text="Favoritar" />
     </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnEnviarImagem"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Imagem" />
+
+        <Button
+            android:id="@+id/btnEnviarAudio"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Áudio arquivo" />
+
+        <Button
+            android:id="@+id/btnEnviarVideo"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Vídeo" />
+
+        <Button
+            android:id="@+id/btnTirarFoto"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Foto" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/btnGravarAudio"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Gravar áudio" />
 
     <LinearLayout
         android:layout_width="match_parent"
