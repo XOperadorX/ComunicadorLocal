@@ -61,6 +61,7 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
     private var modoAtual = Modo.NENHUM
     private var modoPendente = Modo.NENHUM
     private var chatVisivel = false
+    private var comunidadeVisivel = false
     private var appEmPrimeiroPlano = false
     private var solicitouPermissaoNotificacoes = false
     private var gravadorAudio: MediaRecorder? = null
@@ -214,7 +215,8 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (chatVisivel) voltarParaSelecao()
+                if (comunidadeVisivel) mostrarTelaInicial()
+                else if (chatVisivel) voltarParaSelecao()
                 else finish()
             }
         })
@@ -232,6 +234,7 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
 
     private fun mostrarTelaInicial() {
         chatVisivel = false
+        comunidadeVisivel = false
         modoAtual = Modo.NENHUM
         setContentView(R.layout.activity_main)
         findViewById<TextView>(R.id.tvVersao).text = "Versão ${BuildConfig.VERSION_NAME}"
@@ -241,6 +244,16 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
         findViewById<Button>(R.id.btnModoWifi).setOnClickListener {
             selecionarModo(Modo.WIFI_DIRECT)
         }
+        findViewById<Button>(R.id.btnComunidade).setOnClickListener {
+            abrirComunidadeLocal()
+        }
+    }
+
+    private fun abrirComunidadeLocal() {
+        chatVisivel = false
+        comunidadeVisivel = true
+        modoAtual = Modo.NENHUM
+        ComunidadeLocal(this) { mostrarTelaInicial() }.mostrar()
     }
 
     private fun selecionarModo(modo: Modo) {
@@ -1473,6 +1486,7 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
 
     override fun onDestroy() {
         chatVisivel = false
+        comunidadeVisivel = false
         ocultarProgressoTransferencia()
         descartarAnexoRecebido()
         pararGravacaoAudio(enviar = false)

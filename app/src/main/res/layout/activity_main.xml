@@ -49,6 +49,15 @@
             android:textSize="16sp"
             android:backgroundTint="#9E9E9E" />
 
+        <Button
+            android:id="@+id/btnComunidade"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="16dp"
+            android:text="Comunidade local (offline)"
+            android:textSize="16sp"
+            android:backgroundTint="#388E3C" />
+
         <TextView
             android:id="@+id/tvVersao"
             android:layout_width="match_parent"
