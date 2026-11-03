@@ -40,9 +40,57 @@
         android:layout_height="wrap_content"
         android:background="#E8F5E9"
         android:padding="10dp"
-        android:text="Mural offline: publicações, curtidas e comentários ficam somente neste aparelho."
+        android:text="Mural offline: publicações e mídias ficam somente neste aparelho."
         android:textColor="#2E7D32"
         android:textSize="13sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnImagemComunidade"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Imagem" />
+
+        <Button
+            android:id="@+id/btnVideoComunidade"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Vídeo" />
+
+        <Button
+            android:id="@+id/btnAudioComunidade"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Áudio arquivo" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnFotoComunidade"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Foto" />
+
+        <Button
+            android:id="@+id/btnGravarAudioComunidade"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:backgroundTint="#1976D2"
+            android:text="Gravar áudio" />
+    </LinearLayout>
 
     <ScrollView
         android:layout_width="match_parent"
@@ -64,7 +112,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="top|start"
-        android:hint="Compartilhe algo com a comunidade..."
+        android:hint="Compartilhe algo ou escreva uma legenda..."
         android:inputType="textCapSentences|textMultiLine"
         android:maxLength="2000"
         android:maxLines="4"

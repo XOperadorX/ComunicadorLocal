@@ -1,6 +1,6 @@
 # Comunicador Local
 
-Aplicativo Android nativo, desenvolvido em Kotlin, para conversar entre aparelhos próximos por Bluetooth, sem depender de internet ou rede móvel. A versão 1.6 também inclui uma comunidade local para criar publicações, curtir e comentar no próprio aparelho.
+Aplicativo Android nativo, desenvolvido em Kotlin, para conversar entre aparelhos próximos por Bluetooth, sem depender de internet ou rede móvel. A versão 1.7 inclui uma comunidade local para criar publicações com texto, fotos, vídeos e áudio no próprio aparelho.
 
 ## Como funciona
 
@@ -8,13 +8,19 @@ O app oferece três recursos:
 
 1. **Seleção de conexão:** escolha Bluetooth. O botão **Wi-Fi Direct** permanece desativado para implementação futura.
 2. **Conversa:** o app começa automaticamente a aguardar conexões Bluetooth. Não é necessário criar conta nem informar senha.
-3. **Comunidade local:** crie um perfil neste aparelho e publique textos, curta e comente publicações. O mural é armazenado no dispositivo e não é sincronizado nem compartilhado com outros aparelhos; não requer conta ou internet.
+3. **Comunidade local:** crie um perfil neste aparelho e publique textos, fotos, vídeos e áudios, curta e comente publicações. O mural e os arquivos de mídia são armazenados no dispositivo e não são sincronizados nem compartilhados com outros aparelhos; criar publicações, gravar e abrir mídias funciona mesmo sem Bluetooth ou internet.
 
 Na conversa, o status Bluetooth fica verde como **Conectado**, amarelo como **Conectando** e vermelho como **Desconectado**. O nome do aparelho aparece no status. O Android não informa se o app no outro aparelho está conversando com uma terceira pessoa; por isso, o amarelo indica uma tentativa de conexão, não uma confirmação de que o aparelho está ocupado.
 
-Além de texto, é possível enviar imagens, vídeos e arquivos de áudio sem um limite de tamanho definido pelo app. Também é possível gravar um áudio no app e enviá-lo diretamente, ou tirar uma foto com a câmera e enviá-la. Para anexos maiores que **1 MB**, aparece uma animação de envio com tamanho transferido, tamanho total e velocidade em kbps. A transferência depende do espaço livre no telefone, da memória e da estabilidade/velocidade do Bluetooth. Toque em uma mensagem de mídia para abri-la em um aplicativo compatível. Os dois aparelhos precisam ter a versão 1.6 para transferir mídia.
+Na conversa Bluetooth, é possível enviar imagens, vídeos e arquivos de áudio sem um limite de tamanho definido pelo app. Também é possível gravar um áudio ou tirar uma foto e enviá-los. Para anexos maiores que **1 MB**, aparece uma animação de envio com tamanho transferido, tamanho total e velocidade em kbps. A transferência depende do espaço livre no telefone, da memória e da estabilidade/velocidade do Bluetooth. Toque em uma mensagem de mídia para abri-la em um aplicativo compatível. Os dois aparelhos precisam ter a versão 1.7 para transferir mídia.
 
-Cada mensagem registra a data e a hora de envio ou recebimento. Mensagens enviadas sem conexão Bluetooth ficam salvas na fila privada do app e são transmitidas quando a conexão for estabelecida; elas aparecem marcadas como pendentes. Mensagens recebidas geram uma notificação quando a conversa está conectada e o app está em segundo plano; no Android 13 ou superior, permita notificações quando solicitado. O histórico da conversa também é salvo no telefone e permanece após sair do app ou arquivar. **Limpar** apaga o histórico atual e as mensagens pendentes. **Arquivar** salva uma cópia sem apagar o histórico e abre a lista de arquivos por data e hora; selecione um arquivo para ler ou exclua apenas essa cópia. Os arquivos e favoritos ficam no armazenamento privado do app. A linha inferior informa a ação executada. Os botões foram compactados para aproveitar melhor a tela do celular. A tela inicial exibe a versão **1.6**.
+Cada mensagem registra a data e a hora de envio ou recebimento. Mensagens enviadas sem conexão Bluetooth ficam salvas na fila privada do app e são transmitidas quando a conexão for estabelecida; elas aparecem marcadas como pendentes. Mensagens recebidas geram uma notificação quando a conversa está conectada e o app está em segundo plano; no Android 13 ou superior, permita notificações quando solicitado. O histórico da conversa também é salvo no telefone e permanece após sair do app ou arquivar. **Limpar** apaga o histórico atual e as mensagens pendentes. **Arquivar** salva uma cópia sem apagar o histórico e abre a lista de arquivos por data e hora; selecione um arquivo para ler ou exclua apenas essa cópia. Os arquivos e favoritos ficam no armazenamento privado do app. A linha inferior informa a ação executada. Os botões foram compactados para aproveitar melhor a tela do celular. A tela inicial exibe a versão **1.7**.
+
+### Comunidade local (offline)
+
+Abra **Comunidade local** na tela inicial. Escreva uma publicação ou legenda e toque em **Publicar** para publicar texto. Para anexar uma mídia, toque em **Imagem**, **Vídeo** ou **Áudio arquivo** e selecione o arquivo no celular; a seleção copia a mídia para o armazenamento privado e cria uma publicação imediatamente. Toque em **Foto**, fotografe e confirme para publicar uma nova imagem. Para gravar, toque em **Gravar áudio**, permita o acesso ao microfone na primeira vez e, ao terminar, toque em **Parar gravação**; o áudio será publicado. Toque no botão da mídia em uma publicação para abri-la em um aplicativo compatível.
+
+As publicações e mídias desta comunidade existem apenas no aparelho em que foram criadas. A comunidade não envia arquivos para outros aparelhos nem para a conversa Bluetooth; conexão e internet não são necessárias. A exclusão de uma publicação também remove a mídia local associada.
 
 ## Conectar aparelhos
 
@@ -24,7 +30,7 @@ Cada mensagem registra a data e a hora de envio ou recebimento. Mensagens enviad
 2. Pareie os aparelhos nas configurações do Android.
 3. No primeiro aparelho, escolha **Bluetooth**; ele ficará disponível automaticamente.
 4. No segundo, escolha **Bluetooth**, toque em **Conectar pareado** e selecione o primeiro aparelho.
-5. Quando o status ficar verde, envie mensagens, imagens, vídeos ou arquivos de áudio; use **Gravar áudio** para gravar ou **Foto** para capturar uma imagem com a câmera. Os anexos exigem que o aparelho esteja conectado e que ambos usem a versão 1.6. Na primeira gravação, permita acesso ao microfone.
+5. Quando o status ficar verde, envie mensagens, imagens, vídeos ou arquivos de áudio; use **Gravar áudio** para gravar ou **Foto** para capturar uma imagem com a câmera. Os anexos exigem que o aparelho esteja conectado e que ambos usem a versão 1.7. Na primeira gravação, permita acesso ao microfone.
 
 O app procura aparelhos que já estejam pareados pelo Android; o pareamento não é feito dentro do app. Se a conexão for encerrada, o app volta automaticamente a aguardar outra conexão. Em vermelho, o nome indica que a conexão foi encerrada ou falhou; amarelo indica conexão em andamento. Não é possível confirmar por Bluetooth se uma conexão falhou porque o outro aparelho está usando o app com outra pessoa ou porque está desconectado.
 

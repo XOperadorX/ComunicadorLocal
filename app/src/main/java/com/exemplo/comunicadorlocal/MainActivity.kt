@@ -62,6 +62,7 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
     private var modoPendente = Modo.NENHUM
     private var chatVisivel = false
     private var comunidadeVisivel = false
+    private var comunidadeLocal: ComunidadeLocal? = null
     private var appEmPrimeiroPlano = false
     private var solicitouPermissaoNotificacoes = false
     private var gravadorAudio: MediaRecorder? = null
@@ -70,6 +71,7 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
     private var anexoRecebido: AnexoRecebido? = null
     private var uriCapturaPendente: Uri? = null
     private var arquivoCapturaPendente: File? = null
+    private var arquivoFotoComunidade: File? = null
     private var mensagemSelecionada = -1
     private var aparelhoSelecionado: String? = null
     private var alvoDesconectado = false
@@ -96,6 +98,43 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
     private val selecionarVideo =
         registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             uri?.let { enviarAnexo(it, "video") }
+        }
+
+    private val selecionarImagemComunidade =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let { comunidadeLocal?.adicionarMidia(it, "imagem") }
+        }
+
+    private val selecionarAudioComunidade =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let { comunidadeLocal?.adicionarMidia(it, "audio") }
+        }
+
+    private val selecionarVideoComunidade =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let { comunidadeLocal?.adicionarMidia(it, "video") }
+        }
+
+    private val capturarImagemComunidade =
+        registerForActivityResult(ActivityResultContracts.TakePicture()) { capturada ->
+            val arquivo = arquivoFotoComunidade
+            arquivoFotoComunidade = null
+            if (capturada && arquivo != null) {
+                comunidadeLocal?.adicionarMidiaLocal(arquivo, "imagem", "image/jpeg")
+                    ?: arquivo.delete()
+            } else {
+                arquivo?.delete()
+            }
+        }
+
+    private val permissaoGravacaoAudioComunidade =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { concedida ->
+            if (concedida) comunidadeLocal?.iniciarGravacaoAudio()
+            else Toast.makeText(
+                this,
+                "A permissão de microfone é necessária para gravar áudio.",
+                Toast.LENGTH_LONG
+            ).show()
         }
 
     private val capturarImagem =
@@ -235,6 +274,8 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
     private fun mostrarTelaInicial() {
         chatVisivel = false
         comunidadeVisivel = false
+        comunidadeLocal?.pararGravacaoAudio(cancelar = true)
+        comunidadeLocal = null
         modoAtual = Modo.NENHUM
         setContentView(R.layout.activity_main)
         findViewById<TextView>(R.id.tvVersao).text = "Versão ${BuildConfig.VERSION_NAME}"
@@ -253,7 +294,41 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
         chatVisivel = false
         comunidadeVisivel = true
         modoAtual = Modo.NENHUM
-        ComunidadeLocal(this) { mostrarTelaInicial() }.mostrar()
+        comunidadeLocal = ComunidadeLocal(
+            activity = this,
+            aoVoltar = { mostrarTelaInicial() },
+            selecionarImagem = { selecionarImagemComunidade.launch("image/*") },
+            selecionarVideo = { selecionarVideoComunidade.launch("video/*") },
+            selecionarAudio = { selecionarAudioComunidade.launch("audio/*") },
+            tirarFoto = { tirarFotoComunidade() },
+            solicitarPermissaoAudio = {
+                if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    comunidadeLocal?.iniciarGravacaoAudio()
+                } else {
+                    permissaoGravacaoAudioComunidade.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            }
+        ).also { it.mostrar() }
+    }
+
+    private fun tirarFotoComunidade() {
+        val diretorio = File(filesDir, "$DIRETORIO_ANEXOS/comunidade")
+        if (!diretorio.exists() && !diretorio.mkdirs()) {
+            Toast.makeText(this, "Não foi possível preparar o armazenamento da foto.", Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            val arquivo = File.createTempFile("foto-comunidade-", ".jpg", diretorio)
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", arquivo)
+            arquivoFotoComunidade = arquivo
+            capturarImagemComunidade.launch(uri)
+        } catch (exception: IOException) {
+            Toast.makeText(this, "Não foi possível preparar a câmera.", Toast.LENGTH_LONG).show()
+        } catch (exception: IllegalArgumentException) {
+            Toast.makeText(this, "Não foi possível compartilhar o arquivo com a câmera.", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun selecionarModo(modo: Modo) {
@@ -1487,6 +1562,8 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
     override fun onDestroy() {
         chatVisivel = false
         comunidadeVisivel = false
+        comunidadeLocal?.pararGravacaoAudio(cancelar = true)
+        comunidadeLocal = null
         ocultarProgressoTransferencia()
         descartarAnexoRecebido()
         pararGravacaoAudio(enviar = false)
