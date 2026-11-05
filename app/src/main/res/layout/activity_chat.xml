@@ -107,6 +107,14 @@
             android:text="Conectar pareado" />
     </LinearLayout>
 
+    <Button
+        android:id="@+id/btnChamar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:backgroundTint="#2E7D32"
+        android:text="Solicitar chamada" />
+
     <LinearLayout
         android:id="@+id/controlesWifi"
         android:layout_width="match_parent"

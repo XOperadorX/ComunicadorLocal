@@ -417,6 +417,8 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
             if (usandoBluetooth) View.VISIBLE else View.GONE
         findViewById<View>(R.id.controlesWifi).visibility =
             if (usandoBluetooth) View.GONE else View.VISIBLE
+        findViewById<Button>(R.id.btnChamar).visibility =
+            if (usandoBluetooth) View.VISIBLE else View.GONE
         findViewById<TextView>(R.id.tvDicaConexao).text =
             if (usandoBluetooth) {
                 "Pareie os aparelhos nas configurações do Android antes de procurar."
@@ -427,6 +429,14 @@ class MainActivity : AppCompatActivity(), WifiDirectHelper.EventosWifiDirect {
         btnEnviar.isEnabled = usandoBluetooth
         tvStatus.text = "● Desconectado: conecte-se a outro aparelho para começar."
         btnEnviar.setOnClickListener { enviarMensagem() }
+        findViewById<Button>(R.id.btnChamar).setOnClickListener {
+            edMensagem.setText("📞 Solicito uma chamada pelo Comunicador Local. Responda quando conectar.")
+            enviarMensagem()
+            registrarComando(
+                if (btHelper.conectado()) "enviar solicitação de chamada"
+                else "guardar solicitação de chamada até reconectar"
+            )
+        }
         findViewById<Button>(R.id.btnBtDisponivel).setOnClickListener {
             alvoDesconectado = false
             aparelhoSelecionado = null
